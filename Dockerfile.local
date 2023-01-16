@@ -1,0 +1,27 @@
+FROM python:3.7.9-slim-buster as base
+
+# ---- compile image -----------------------------------------------
+FROM base AS compile-image
+RUN apt-get update && apt -y upgrade \
+  && apt-get install -y --no-install-recommends build-essential libpq-dev gcc \
+  && apt clean
+
+COPY src/fim-scan.py /monitor/
+
+# get all the code needed to run the app
+ADD src/. /opt/tokenizer
+# add ssl certs for database and add all gcp auth for google apis
+# /opt/tokenizer/certs must have these folders db-ssl and gcp
+# make sure with de enviroment, in this case is ==local==
+ADD deploy_credentials/stg/. /opt/tokenizer/certs
+
+#hay que referenciar al directorio actual sino retorna error que no encuentra app python
+WORKDIR /opt/tokenizer
+# pip install is fast here (while slow without the venv) :
+RUN pip install --no-cache-dir -r requirements.txt \
+  && rm -rf fim-scan.py \
+  && chmod -R 400 /opt/tokenizer/certs/db-ssl \
+  && pip list && echo 'CLUSTER PROCESS - SVC TOKENIZER LOCAL'
+
+ENTRYPOINT ["uwsgi", "--socket", "0.0.0.0:5000","--py-autoreload", "1", "--protocol=http" , "-w", "wsgi:app"]
+EXPOSE 5000
